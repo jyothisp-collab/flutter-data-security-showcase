@@ -64,7 +64,7 @@ The tests cover:
 Run:
 
 ```sh
-dart format --set-exit-if-changed .
+flutter format .
 flutter analyze
 flutter test
 ```
