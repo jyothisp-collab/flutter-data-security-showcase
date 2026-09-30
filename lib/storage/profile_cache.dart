@@ -1,5 +1,5 @@
-import 'app_data_store.dart';
-import 'app_profile.dart';
+import '../storage/app_data_store.dart';
+import '../storage/app_profile.dart';
 
 typedef ProfileFetcher = Future<AppProfile> Function();
 
@@ -8,13 +8,11 @@ class ProfileCache {
 
   final AppDataStore _store;
 
-  AppProfile? readCached() => _store.readProfile();
+  AppProfile? readCached() => _store.loadProfile();
 
   Future<AppProfile> readThrough(ProfileFetcher fetchFresh) async {
-    final cached = _store.readProfile();
-    if (cached != null) {
-      return cached;
-    }
+    final cached = readCached();
+    if (cached != null) return cached;
 
     final fresh = await fetchFresh();
     await _store.saveProfile(fresh);

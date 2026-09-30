@@ -3,9 +3,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app_profile.dart';
 
 class AppDataStore {
-  AppDataStore(this._preferences);
-
   static const _profileKey = 'app_profile';
+
+  AppDataStore(this._preferences);
 
   final SharedPreferences _preferences;
 
@@ -13,13 +13,10 @@ class AppDataStore {
     await _preferences.setString(_profileKey, profile.encode());
   }
 
-  AppProfile? readProfile() {
-    final storedValue = _preferences.getString(_profileKey);
-    if (storedValue == null) {
-      return null;
-    }
-
-    return AppProfile.decode(storedValue);
+  AppProfile? loadProfile() {
+    final raw = _preferences.getString(_profileKey);
+    if (raw == null || raw.isEmpty) return null;
+    return AppProfile.decode(raw);
   }
 
   Future<AppProfile?> updateProfile({
@@ -27,10 +24,8 @@ class AppDataStore {
     String? note,
     DateTime? updatedAt,
   }) async {
-    final existing = readProfile();
-    if (existing == null) {
-      return null;
-    }
+    final existing = loadProfile();
+    if (existing == null) return null;
 
     final updated = existing.copyWith(
       displayName: displayName,

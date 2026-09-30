@@ -1,83 +1,96 @@
 # Flutter Data Security Showcase
 
-Small Flutter reference implementation for local data storage and secure data handling.
-
-This is not a complete application. It keeps the code intentionally compact so reviewers can inspect the storage boundaries and security decisions quickly.
+A focused Flutter reference implementation demonstrating how to separate ordinary and sensitive data storage. Built for client review to show secure-by-default local data handling patterns.
 
 ## What It Demonstrates
 
-- Storing ordinary application data locally with `shared_preferences`
-- Basic create, read, update, and delete behavior for a simple profile object
-- Storing sensitive token-like values separately with `flutter_secure_storage`
-- A small read-through cache that returns local data first and fetches only when empty
-- Safe UI display that shows whether a sensitive value exists without rendering the value
-- Configuration through compile-time environment values instead of hardcoded secrets
+- **Ordinary data storage** with `shared_preferences` for non-sensitive profile fields (display name, note).
+- **Sensitive data storage** with `flutter_secure_storage` (Keychain on iOS, Keystore on Android) for tokens and credentials.
+- **Read-through cache pattern** — returns cached data first, fetches only on cache miss, making the cache behavior testable without an API client.
+- **Immutable data models** with `copyWith`, JSON serialization (`toJson`/`fromJson`), and encode/decode helpers.
+- **Compile-time configuration** via `String.fromEnvironment` and `--dart-define` instead of hardcoded secrets.
+- **Safe UI display** — shows whether a sensitive value exists without ever rendering the value itself.
+- **Interface-based abstractions** — `SensitiveValueStore` interface enables swapping implementations without touching the UI or tests.
 
-## Normal Storage vs Secure Storage
+## Architecture Overview
 
-Ordinary data is handled by `AppDataStore` in `lib/storage/app_data_store.dart`.
+```
+lib/
+├── main.dart                              — Composition root, UI wiring
+├── security/
+│   ├── app_config.dart                    — Build-time environment config
+│   └── sensitive_value_store.dart          — Interface + SecureTokenStore impl
+└── storage/
+    ├── app_data_store.dart                — SharedPreferences CRUD for profiles
+    ├── app_profile.dart                   — Immutable profile model
+    └── profile_cache.dart                 — Read-through cache with testable fetcher
+```
 
-The stored profile contains safe fields such as:
+### Storage Strategy
 
-- display name
-- non-sensitive note
-- last updated timestamp
+| Data Type | Mechanism | Encryption | Example Fields |
+|---|---|---|---|
+| Ordinary profile data | `SharedPreferences` (JSON) | None | display name, note, timestamp |
+| Sensitive tokens | `flutter_secure_storage` | Platform keystore | access token, refresh token |
+| Cached values | `SharedPreferences` | None | last-fetched profile |
 
-Sensitive values are handled through `SensitiveValueStore` in `lib/security/sensitive_value_store.dart`. The production implementation uses `flutter_secure_storage` and stores token-like values under a separate key from ordinary app data.
+## Data Flow
 
-The UI only displays `Sensitive token stored: Yes/No`. It never displays the sensitive value after saving.
+```
+UI → StorageShowcaseController → AppDataStore (SharedPreferences)
+                                      → SensitiveValueStore (Encrypted)
+                                      → ProfileCache (read-through)
+```
 
-## Cache Approach
+`StorageShowcaseController` composes all three storage layers and exposes async methods that return `StorageShowcaseSnapshot` for the UI to render.
 
-`ProfileCache` in `lib/storage/profile_cache.dart` demonstrates a minimal read-through cache:
+## Read-Through Cache
 
-1. Try to read a profile from local storage.
-2. If one exists, return it.
-3. If not, call the provided fetcher function.
-4. Save the fetched profile locally.
+`ProfileCache` implements a minimal cache-aside pattern:
 
-There is no networking code in this repository. The fetcher is deliberately passed in so the cache behavior is testable without adding an API client.
+1. Check local storage for cached data.
+2. If found, return it immediately.
+3. If not found, call the provided fetcher function.
+4. Persist the fetched result locally.
+5. Return the result.
+
+The fetcher is passed as a callback so the cache behavior is testable without adding an API client.
 
 ## Security Considerations
 
 - No real credentials, tokens, API keys, or client data are included.
-- Sensitive values are not logged or displayed.
+- Sensitive values are never logged, printed, or displayed in the UI.
 - Sensitive and non-sensitive data use separate storage mechanisms.
-- `AppConfig` reads values with `String.fromEnvironment`, so build-time configuration can be supplied with `--dart-define`.
-- The example avoids custom encryption code. Platform secure storage is delegated to `flutter_secure_storage`.
-
-Example configuration:
-
-```sh
-flutter run --dart-define=APP_ENV=demo --dart-define=API_BASE_URL=https://example.invalid
-```
+- `AppConfig` reads values with `String.fromEnvironment`, so build-time configuration is supplied with `--dart-define`:
+  ```sh
+  flutter run --dart-define=APP_ENV=demo --dart-define=API_BASE_URL=https://example.invalid
+  ```
+- Custom encryption is avoided. Platform secure storage is delegated to `flutter_secure_storage`.
 
 ## Testing
 
-The tests cover:
+Tests cover:
 
-- CRUD behavior for ordinary local data
-- Read-through cache behavior
-- Sensitive-store abstraction behavior
-- Widget behavior that confirms saved sensitive text is not displayed
+- CRUD behavior for ordinary local data via `AppDataStore`.
+- Read-through cache behavior with fetcher callbacks.
+- `SensitiveValueStore` abstraction — save, retrieve, clear, overwrite.
+- Widget tests confirming saved sensitive text is never displayed.
 
 Run:
 
-```sh
-flutter format .
-flutter analyze
+```bash
+flutter pub get
 flutter test
+flutter analyze
 ```
 
 ## Out Of Scope
 
-- Networking or API integration
-- Authentication flows
-- Firebase
-- Notifications
-- Payments
-- Database synchronization
-- Offline-first architecture
-- Custom encryption implementation
-- Dependency injection frameworks or service locators
-- Code generation
+- Networking or API integration.
+- Authentication flows (tokens are stored but not acquired).
+- Firebase or push notifications.
+- Biometric authentication for secure storage access.
+- Database synchronization or offline-first architecture.
+- Custom encryption implementation.
+- Dependency injection frameworks.
+- Code generation (json_serializable, freezed).

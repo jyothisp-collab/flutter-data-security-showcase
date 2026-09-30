@@ -10,30 +10,113 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  test('saves, reads, updates, and deletes ordinary local data', () async {
-    final preferences = await SharedPreferences.getInstance();
-    final store = AppDataStore(preferences);
-    final profile = AppProfile(
-      id: 'profile-1',
-      displayName: 'Ada',
-      note: 'Non-sensitive preference',
-      updatedAt: DateTime.utc(2026, 1, 1),
-    );
+  group('AppDataStore', () {
+    late AppDataStore store;
 
-    await store.saveProfile(profile);
+    setUp(() async {
+      final prefs = await SharedPreferences.getInstance();
+      store = AppDataStore(prefs);
+    });
 
-    expect(store.readProfile()?.displayName, 'Ada');
+    test('saveProfile persists and loadProfile returns it', () async {
+      final profile = AppProfile(
+        id: 'p-1',
+        displayName: 'Ada',
+        note: 'Note',
+        updatedAt: DateTime.utc(2026, 1, 1),
+      );
 
-    final updated = await store.updateProfile(
-      displayName: 'Ada Lovelace',
-      updatedAt: DateTime.utc(2026, 1, 2),
-    );
+      await store.saveProfile(profile);
 
-    expect(updated?.displayName, 'Ada Lovelace');
-    expect(store.readProfile()?.updatedAt, DateTime.utc(2026, 1, 2));
+      final loaded = store.loadProfile();
+      expect(loaded, isNotNull);
+      expect(loaded!.id, 'p-1');
+      expect(loaded.displayName, 'Ada');
+      expect(loaded.note, 'Note');
+      expect(loaded.updatedAt, DateTime.utc(2026, 1, 1));
+    });
 
-    await store.deleteProfile();
+    test('loadProfile returns null when no profile saved', () async {
+      expect(store.loadProfile(), isNull);
+    });
 
-    expect(store.readProfile(), isNull);
+    test('deleteProfile removes stored profile', () async {
+      final profile = AppProfile(
+        id: 'p-1',
+        displayName: 'Ada',
+        note: 'Note',
+        updatedAt: DateTime.utc(2026, 1, 1),
+      );
+
+      await store.saveProfile(profile);
+      expect(store.loadProfile(), isNotNull);
+
+      await store.deleteProfile();
+      expect(store.loadProfile(), isNull);
+    });
+
+    test('updateProfile returns null when no existing profile', () async {
+      final result = await store.updateProfile(displayName: 'New Name');
+      expect(result, isNull);
+    });
+
+    test('updateProfile modifies only specified fields', () async {
+      final original = AppProfile(
+        id: 'p-1',
+        displayName: 'Ada',
+        note: 'Original note',
+        updatedAt: DateTime.utc(2026, 1, 1),
+      );
+
+      await store.saveProfile(original);
+      final updated = await store.updateProfile(displayName: 'Ada Lovelace');
+
+      expect(updated, isNotNull);
+      expect(updated!.displayName, 'Ada Lovelace');
+      expect(updated.note, 'Original note');
+      expect(updated.id, 'p-1');
+    });
+
+    test('updateProfile uses current time when updatedAt not provided',
+        () async {
+      final before = DateTime.utc(2026, 6, 1);
+      final original = AppProfile(
+        id: 'p-1',
+        displayName: 'Ada',
+        note: 'Note',
+        updatedAt: before,
+      );
+
+      await store.saveProfile(original);
+      final updated = await store.updateProfile(note: 'New note');
+
+      expect(updated, isNotNull);
+      expect(updated!.updatedAt.isAfter(before), isTrue);
+      expect(updated.note, 'New note');
+    });
+
+    test('saving profile with different id replaces the old one', () async {
+      await store.saveProfile(
+        AppProfile(
+          id: 'old',
+          displayName: 'Old',
+          note: 'Old note',
+          updatedAt: DateTime.utc(2026, 1, 1),
+        ),
+      );
+
+      await store.saveProfile(
+        AppProfile(
+          id: 'new',
+          displayName: 'New',
+          note: 'New note',
+          updatedAt: DateTime.utc(2026, 6, 1),
+        ),
+      );
+
+      final loaded = store.loadProfile();
+      expect(loaded!.id, 'new');
+      expect(loaded.displayName, 'New');
+    });
   });
 }
